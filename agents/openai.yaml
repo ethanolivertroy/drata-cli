@@ -1,0 +1,7 @@
+interface:
+  display_name: "Drata CLI Workflow"
+  short_description: "Use the local Drata CLI for GRC work"
+  default_prompt: "Use $drata-cli-workflow to answer Drata/GRC questions through the local drata CLI. Prefer versionless commands, --json output, read-only mode for reporting, GRC Engineering-style reusable queries, secure auth sources, and --dry-run --json before writes."
+
+policy:
+  allow_implicit_invocation: true

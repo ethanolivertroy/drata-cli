@@ -1,0 +1,57 @@
+{
+  "name": "drata-cli",
+  "version": "0.1.0",
+  "description": "Unofficial command-line client for Drata's public API.",
+  "license": "MIT",
+  "author": "Ethan Troy <63926014+ethanolivertroy@users.noreply.github.com>",
+  "type": "module",
+  "bin": {
+    "drata": "src/cli.mjs"
+  },
+  "files": [
+    ".env.example",
+    "AGENTS.md",
+    "agents/",
+    "scripts/",
+    "src/",
+    "specs/",
+    "skills/",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ethanolivertroy/drata-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ethanolivertroy/drata-cli/issues"
+  },
+  "homepage": "https://github.com/ethanolivertroy/drata-cli#readme",
+  "keywords": [
+    "drata",
+    "cli",
+    "api",
+    "openapi",
+    "grc",
+    "compliance",
+    "automation",
+    "pi-package",
+    "opencode",
+    "skills"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  },
+  "scripts": {
+    "refresh-specs": "node ./scripts/refresh-specs.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
