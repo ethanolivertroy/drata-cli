@@ -227,7 +227,7 @@ function compactConnection(connection) {
   return {
     id: connection.id ?? null,
     clientType: connection.clientType ?? null,
-    alias: connection.clientAlias || undefined,
+    alias: connection.clientAlias ?? null,
     status: connectionState(connection),
     providers,
   };
@@ -380,10 +380,11 @@ export function buildSummaryPayload({ controlsPayload, monitorsPayload, personne
     controls: {
       total: payloadTotal(controlsPayload, controls),
       passing: controlSummary.passing,
-      needs_attention: controlSummary.not_ready + controlSummary.no_owner + controlSummary.needs_evidence + controlSummary.ready,
+      needs_attention: controlSummary.not_ready + controlSummary.no_owner + controlSummary.needs_evidence,
       not_ready: controlSummary.not_ready,
       no_owner: controlSummary.no_owner,
       needs_evidence: controlSummary.needs_evidence,
+      ready: controlSummary.ready,
       archived: controlSummary.archived,
     },
     monitors: {
@@ -569,6 +570,7 @@ export async function runEvidenceList(flags, options = {}) {
     kind: "evidence.list",
     workspaceId,
     total: payloadTotal(data, dataItems(data)),
+    matching: dataItems(data).length,
     showing: evidence.length,
     evidence,
   };
@@ -584,7 +586,14 @@ export async function runEvidenceExpiring(flags, options = {}) {
 }
 
 async function getFirstWorkspaceId(flags) {
-  const { data } = await listV1("list-workspaces", flags);
+  const workspaceFlags = cloneFlags(flags);
+  workspaceFlags.readOnly = true;
+  workspaceFlags.allPages = false;
+  workspaceFlags.named.delete("limit");
+  workspaceFlags.named.delete("page");
+  pushNamed(workspaceFlags, "page", 1);
+  pushNamed(workspaceFlags, "limit", 1);
+  const { data } = await runWorkflowOperation("v1", "list-workspaces", workspaceFlags);
   const [workspace] = dataItems(data);
   if (!workspace?.id) {
     fail("missing_workspace", "No Drata workspace was found. Pass --workspace-id explicitly if needed.");
