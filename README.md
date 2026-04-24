@@ -226,7 +226,7 @@ drata personnel issues --json --compact
 drata evidence expiring --days 60 --json --compact
 ```
 
-These workflows use v1 list endpoints where they provide workspace-independent compliance rollups and automatically follow page/limit pagination. `--limit N` caps displayed items in workflow outputs without changing the underlying summary counts.
+These workflows use v1 list endpoints where they provide workspace-independent compliance rollups and automatically follow page/limit pagination. `--limit N` caps displayed items in workflow outputs without changing the underlying summary counts or API page size. Use `--max-pages N` to bound collection work for very large tenants.
 
 ## Invoke operations
 
