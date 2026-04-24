@@ -159,11 +159,12 @@ export DRATA_DEFAULT_VERSION=v2
 
 For local use, copy `.env.example` to `.env.local` and fill in `DRATA_API_KEY`. The CLI automatically loads `.env.local` and `.env` from the current working directory without overriding already-exported environment variables.
 
-For stronger local secret storage on macOS, store the key in Keychain:
+For stronger local secret storage on macOS, store the key in Keychain and optionally validate it against the API:
 
 ```bash
 drata auth login --api-key-stdin
 drata auth status
+drata auth check --json
 drata auth logout
 ```
 
@@ -211,6 +212,21 @@ drata describe v1 GRCPublicController_editControl
 drata describe v2 get-company --json
 drata agent-schema v2 --search company
 ```
+
+## Curated compliance workflows
+
+In addition to raw OpenAPI operations, the CLI includes read-only workflow commands for common compliance triage. These commands use the same auth, region, retry, timeout, JSON, and compact flags as request commands.
+
+```bash
+drata summary --json --compact
+drata controls failing --json --compact
+drata monitors failing --json --compact
+drata connections list --status DISCONNECTED --json --compact
+drata personnel issues --json --compact
+drata evidence expiring --days 60 --json --compact
+```
+
+These workflows use v1 list endpoints where they provide workspace-independent compliance rollups and automatically follow page/limit pagination. `--limit N` caps displayed items in workflow outputs without changing the underlying summary counts.
 
 ## Invoke operations
 
@@ -393,6 +409,8 @@ autoload -Uz compinit && compinit
 - `--dry-run`
 - `--read-only`
 - `--json`
+- `--compact` for curated workflow commands
+- `--limit 10` for curated workflow displayed items
 - `--retry 2`
 - `--timeout-ms 30000`
 

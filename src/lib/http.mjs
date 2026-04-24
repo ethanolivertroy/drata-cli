@@ -577,6 +577,8 @@ export async function resolveEffectiveRequestFlags(parsedFlags) {
       coerceOptionalBoolean(input.readOnly, "readOnly") ||
       coerceOptionalBoolean(process.env.DRATA_READ_ONLY, "DRATA_READ_ONLY"),
     json: parsedFlags.json || Boolean(input.json),
+    compact: parsedFlags.compact || Boolean(input.compact),
+    limit: parsedFlags.limit || Number(input.limit ?? 0),
     retry: parsedFlags.retryProvided ? parsedFlags.retry : resolveInputRetry(input.retry, parsedFlags.retry),
     timeoutMs: parsedFlags.timeoutMsProvided
       ? parsedFlags.timeoutMs
@@ -763,17 +765,30 @@ export async function invokeOperation({ operation, parsedFlags }) {
   }
 
   let cursor = null;
+  let page = null;
   let pagesFetched = 0;
   let mergedData = null;
   let lastStatus = 0;
   let lastRaw = "";
   let lastHeaders = {};
   const seenCursors = new Set();
+  const supportsPagePagination =
+    parsedFlags.allPages &&
+    (operation.parameters ?? []).some((parameter) => parameter.in === "query" && parameter.name === "page") &&
+    (operation.parameters ?? []).some((parameter) => parameter.in === "query" && parameter.name === "limit");
+
+  if (supportsPagePagination) {
+    const requestedPage = Number(prepared.queryValues.get("page") ?? 1);
+    page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  }
 
   do {
     const queryValues = new Map(prepared.queryValues);
     if (cursor !== null) {
       queryValues.set("cursor", cursor);
+    }
+    if (page !== null) {
+      queryValues.set("page", page);
     }
 
     const url = buildUrl(prepared.baseUrl, prepared.pathTemplate, prepared.pathValues, queryValues);
@@ -814,6 +829,36 @@ export async function invokeOperation({ operation, parsedFlags }) {
 
     if (!parsedFlags.allPages) {
       cursor = null;
+      page = null;
+      continue;
+    }
+
+    if (page !== null) {
+      const items = Array.isArray(parsedResponse.data?.data) ? parsedResponse.data.data : null;
+      const total = typeof parsedResponse.data?.total === "number" ? parsedResponse.data.total : null;
+      const mergedItems = Array.isArray(mergedData?.data) ? mergedData.data : [];
+      const requestedLimit = Number(queryValues.get("limit") ?? 0);
+      const shouldContinue =
+        items !== null &&
+        items.length > 0 &&
+        (total === null ? true : mergedItems.length < total) &&
+        (!requestedLimit || items.length >= requestedLimit);
+
+      if (!shouldContinue) {
+        page = null;
+        continue;
+      }
+
+      if (pagesFetched >= parsedFlags.maxPages) {
+        fail("pagination_limit_exceeded", `Stopped pagination after ${pagesFetched} page(s). Increase --max-pages to continue.`, {
+          operation: operation.displayAlias,
+          maxPages: parsedFlags.maxPages,
+          pagesFetched,
+          nextPage: page + 1,
+        });
+      }
+
+      page += 1;
       continue;
     }
 
@@ -842,7 +887,7 @@ export async function invokeOperation({ operation, parsedFlags }) {
 
     seenCursors.add(nextCursor);
     cursor = nextCursor;
-  } while (cursor);
+  } while (cursor || page !== null);
 
   return {
     dryRun: false,

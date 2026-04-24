@@ -119,6 +119,17 @@ test("prepares GET requests with typed path and query params", async () => {
   assert.equal(prepared.method, "GET");
 });
 
+test("preserves --limit as an operation query parameter", async () => {
+  const v1 = await getRegistry("v1");
+  const operation = resolveOperation(v1, "controls-get-controls");
+  const parsedFlags = parseRequestFlags(["--limit", "25"]);
+  const prepared = await prepareRequest({ operation, parsedFlags });
+  const url = buildUrl(prepared.baseUrl, prepared.pathTemplate, prepared.pathValues, prepared.queryValues);
+
+  assert.match(url.toString(), /limit=25/);
+  assert.equal(parsedFlags.limit, 25);
+});
+
 test("prepares array query params from repeated flags", async () => {
   const v2 = await getRegistry("v2");
   const operation = resolveOperation(v2, "list-assets");
@@ -356,6 +367,60 @@ test("returns merged raw output for paginated requests", async () => {
     assert.deepEqual(result.data.data, [{ id: 1 }, { id: 2 }]);
     assert.equal(result.raw, JSON.stringify(result.data));
     assert.match(urls[1], /cursor=next/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("returns merged raw output for page/limit paginated requests", async () => {
+  const operation = {
+    version: "v1",
+    displayAlias: "list-test",
+    operationId: "ListTest",
+    method: "GET",
+    path: "/items",
+    parameters: [
+      { in: "query", name: "page", required: false, schema: { type: "number" } },
+      { in: "query", name: "limit", required: false, schema: { type: "number" } },
+    ],
+    requestBody: null,
+    servers: [],
+  };
+  const parsedFlags = parseRequestFlags([
+    "--api-key",
+    "fake",
+    "--base-url",
+    "https://example.test",
+    "--all-pages",
+    "--limit",
+    "2",
+    "--raw",
+  ]);
+  parsedFlags.named.set("limit", ["2"]);
+  const originalFetch = globalThis.fetch;
+  const urls = [];
+  const pages = [
+    { data: [{ id: 1 }, { id: 2 }], total: 3 },
+    { data: [{ id: 3 }], total: 3 },
+  ];
+
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    return new Response(JSON.stringify(pages.shift()), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+  };
+
+  try {
+    const result = await invokeOperation({ operation, parsedFlags });
+
+    assert.deepEqual(result.data.data, [{ id: 1 }, { id: 2 }, { id: 3 }]);
+    assert.equal(result.raw, JSON.stringify(result.data));
+    assert.match(urls[0], /page=1/);
+    assert.match(urls[1], /page=2/);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -691,6 +756,174 @@ test("reads API keys from stdin, files, and commands", async () => {
     await new Promise((resolve) => server.close(resolve));
     await rm(tempDir, { recursive: true, force: true });
   }
+});
+
+test("auth check validates credentials with the Drata API", async () => {
+  const server = createServer((request, response) => {
+    assert.equal(request.url, "/company");
+    assert.equal(request.headers.authorization, "Bearer secret");
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ name: "Acme" }));
+  });
+
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    const { stdout } = await execFile(
+      process.execPath,
+      [
+        "./src/cli.mjs",
+        "auth",
+        "check",
+        "--api-key",
+        "secret",
+        "--base-url",
+        `http://127.0.0.1:${port}`,
+        "--json",
+      ],
+      { cwd: process.cwd() },
+    );
+    const payload = JSON.parse(stdout);
+
+    assert.equal(payload.authenticated, true);
+    assert.equal(payload.source, "flag");
+    assert.deepEqual(payload.company, { name: "Acme" });
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("curated summary emits compact JSON", async () => {
+  const responses = {
+    "/controls": {
+      data: [
+        { id: 1, code: "DCF-1", name: "Passing", isReady: true, hasOwner: true, isMonitored: true, hasEvidence: true },
+        { id: 2, code: "DCF-2", name: "Missing evidence", isReady: true, hasOwner: true, isMonitored: true, hasEvidence: false },
+      ],
+      total: 2,
+    },
+    "/monitors": {
+      data: [
+        { id: 10, name: "Good", checkResultStatus: "PASSED" },
+        { id: 11, name: "Bad", checkResultStatus: "FAILED" },
+      ],
+      total: 2,
+    },
+    "/personnel": {
+      data: [{ id: 20, user: { email: "a@example.com" }, devicesFailingComplianceCount: 1 }],
+      total: 1,
+    },
+    "/connections": {
+      data: [
+        { id: 30, clientType: "github", connected: true, connectedAt: "2026-01-01T00:00:00Z" },
+        { id: 31, clientType: "slack", connected: false, connectedAt: "2026-01-01T00:00:00Z" },
+      ],
+      total: 2,
+    },
+  };
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    const payload = responses[url.pathname];
+    assert.ok(payload, `unexpected path ${url.pathname}`);
+    assert.equal(url.searchParams.get("page"), "1");
+    assert.equal(url.searchParams.get("limit"), "100");
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(payload));
+  });
+
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    const { stdout } = await execFile(
+      process.execPath,
+      [
+        "./src/cli.mjs",
+        "summary",
+        "--api-key",
+        "secret",
+        "--base-url",
+        `http://127.0.0.1:${port}`,
+        "--json",
+        "--compact",
+      ],
+      { cwd: process.cwd() },
+    );
+    const payload = JSON.parse(stdout);
+
+    assert.equal(payload.status, "NEEDS_ATTENTION");
+    assert.equal(payload.controls.total, 2);
+    assert.equal(payload.controls.needs_attention, 1);
+    assert.equal(payload.monitors.failed, 1);
+    assert.equal(payload.personnel.with_issues, 1);
+    assert.equal(payload.connections.disconnected, 1);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("curated connections list filters status before calling the API", async () => {
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    assert.equal(url.pathname, "/connections");
+    assert.equal(url.searchParams.has("status"), false);
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        data: [
+          { id: 1, clientType: "connected", connected: true, connectedAt: "2026-01-01T00:00:00Z" },
+          { id: 2, clientType: "disconnected", connected: false, connectedAt: "2026-01-01T00:00:00Z" },
+        ],
+        total: 2,
+      }),
+    );
+  });
+
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    const { stdout } = await execFile(
+      process.execPath,
+      [
+        "./src/cli.mjs",
+        "connections",
+        "list",
+        "--status",
+        "DISCONNECTED",
+        "--api-key",
+        "secret",
+        "--base-url",
+        `http://127.0.0.1:${port}`,
+        "--json",
+        "--compact",
+      ],
+      { cwd: process.cwd() },
+    );
+    const payload = JSON.parse(stdout);
+
+    assert.equal(payload.matching, 1);
+    assert.equal(payload.connections[0].status, "DISCONNECTED");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("curated workflows reject misleading dry runs", async () => {
+  await assert.rejects(
+    execFile(process.execPath, ["./src/cli.mjs", "controls", "failing", "--dry-run", "--json"], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        DRATA_API_KEY: "secret",
+        DRATA_KEYCHAIN_DISABLED: "1",
+      },
+    }),
+    (error) => {
+      const payload = JSON.parse(error.stdout);
+      assert.equal(payload.ok, false);
+      assert.equal(payload.error.code, "unsupported_workflow_dry_run");
+      return true;
+    },
+  );
 });
 
 test("reports auth status without exposing secrets", async () => {
