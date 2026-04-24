@@ -220,10 +220,15 @@ In addition to raw OpenAPI operations, the CLI includes read-only workflow comma
 ```bash
 drata summary --json --compact
 drata controls failing --json --compact
+drata controls get DCF-71 --json --compact
 drata monitors failing --json --compact
+drata monitors for-control DCF-71 --json --compact
+drata monitors get 31 --json --compact
 drata connections list --status DISCONNECTED --json --compact
 drata personnel issues --json --compact
-drata evidence expiring --days 60 --json --compact
+drata personnel get --email alice@example.com --json --compact
+drata evidence list --workspace-id 12 --json --compact
+drata evidence expiring --days 60 --workspace-id 12 --json --compact
 ```
 
 These workflows use v1 list endpoints where they provide workspace-independent compliance rollups and automatically follow page/limit pagination. `--limit N` caps displayed items in workflow outputs without changing the underlying summary counts.

@@ -466,9 +466,54 @@ export async function runControlsFailing(flags) {
   return buildControlsFailingPayload(data, flags);
 }
 
+export async function runControlsGet(flags, options = {}) {
+  const code = String(options.code ?? "");
+  const queryFlags = cloneFlags(flags);
+  pushNamed(queryFlags, "q", code);
+  const { data } = await listV1("controls-get-controls", queryFlags);
+  const control = dataItems(data).map(enrichControl).find((item) => item.code === code);
+  if (!control) {
+    fail("control_not_found", `Control ${code} was not found.`, { code });
+  }
+
+  return flags.compact
+    ? { kind: "controls.get", control: compactControlsPayload({ controls: [control] }).controls[0] }
+    : { kind: "controls.get", control };
+}
+
 export async function runMonitorsFailing(flags) {
   const { data } = await listV1("list-monitors", flags);
   return buildMonitorsFailingPayload(data, flags);
+}
+
+export async function runMonitorsForControl(flags, options = {}) {
+  const code = String(options.code ?? "");
+  const { data } = await listV1("list-monitors", flags);
+  const monitors = dataItems(data).filter((monitor) => (monitor.controls ?? []).some((control) => control.code === code));
+  const limitedMonitors = applyLimit(monitors, flags);
+  const payload = {
+    kind: "monitors.for-control",
+    code,
+    total: payloadTotal(data, dataItems(data)),
+    matching: monitors.length,
+    showing: limitedMonitors.length,
+    monitors: limitedMonitors,
+  };
+
+  return flags.compact ? compactMonitorsPayload(payload) : payload;
+}
+
+export async function runMonitorsGet(flags, options = {}) {
+  const id = String(options.id ?? "");
+  const { data } = await listV1("list-monitors", flags);
+  const monitor = dataItems(data).find((item) => String(item.id) === id);
+  if (!monitor) {
+    fail("monitor_not_found", `Monitor ${id} was not found.`, { id });
+  }
+
+  return flags.compact
+    ? { kind: "monitors.get", monitor: compactMonitorsPayload({ monitors: [monitor] }).monitors[0] }
+    : { kind: "monitors.get", monitor };
 }
 
 export async function runConnectionsList(flags, options = {}) {
@@ -479,6 +524,38 @@ export async function runConnectionsList(flags, options = {}) {
 export async function runPersonnelIssues(flags) {
   const { data } = await listV1("list-personnel", flags);
   return buildPersonnelIssuesPayload(data, flags);
+}
+
+export async function runPersonnelGet(flags, options = {}) {
+  if (options.email) {
+    const detailFlags = withPath(flags, { email: options.email });
+    const { data } = await runWorkflowOperation("v1", "get-personnel-details-by-email", detailFlags);
+    return flags.compact ? { kind: "personnel.get", personnel: compactPersonnel(data) } : { kind: "personnel.get", personnel: data };
+  }
+
+  if (options.id) {
+    const detailFlags = withPath(flags, { id: options.id });
+    const { data } = await runWorkflowOperation("v1", "get-personnel-details", detailFlags);
+    return flags.compact ? { kind: "personnel.get", personnel: compactPersonnel(data) } : { kind: "personnel.get", personnel: data };
+  }
+
+  fail("missing_personnel_lookup", "Provide a personnel id or --email.");
+}
+
+export async function runEvidenceList(flags, options = {}) {
+  const workspaceId = options.workspaceId || (await getFirstWorkspaceId(flags));
+  const listFlags = withPath(withListDefaults(flags), { workspaceId });
+  const { data } = await runWorkflowOperation("v1", "list-evidence", listFlags);
+  const evidence = applyLimit(dataItems(data), flags);
+  const payload = {
+    kind: "evidence.list",
+    workspaceId,
+    total: payloadTotal(data, dataItems(data)),
+    showing: evidence.length,
+    evidence,
+  };
+
+  return flags.compact ? compactEvidencePayload(payload) : payload;
 }
 
 export async function runEvidenceExpiring(flags, options = {}) {
@@ -512,12 +589,22 @@ function formatWorkflowText(payload) {
         .join("\n");
     case "controls.failing":
       return [`Failing Controls: matching=${payload.matching} showing=${payload.showing}`, ...payload.controls.map((c) => `${c.code ?? c.id} ${c.status} ${c.name}`)].join("\n");
+    case "controls.get":
+      return `${payload.control.code ?? payload.control.id} ${payload.control.status} ${payload.control.name}`;
     case "monitors.failing":
       return [`Failing Monitors: matching=${payload.matching} showing=${payload.showing}`, ...payload.monitors.map((m) => `${m.id} ${monitorStatus(m)} ${m.name}`)].join("\n");
+    case "monitors.for-control":
+      return [`Monitors for ${payload.code}: matching=${payload.matching} showing=${payload.showing}`, ...payload.monitors.map((m) => `${m.id} ${monitorStatus(m)} ${m.name}`)].join("\n");
+    case "monitors.get":
+      return `${payload.monitor.id} ${payload.monitor.status ?? monitorStatus(payload.monitor)} ${payload.monitor.name}`;
     case "connections.list":
       return [`Connections: matching=${payload.matching} showing=${payload.showing}`, ...payload.connections.map((c) => `${c.id} ${connectionState(c)} ${c.clientAlias || c.clientType || ""}`)].join("\n");
     case "personnel.issues":
       return [`Personnel with device issues: matching=${payload.matching} showing=${payload.showing}`, ...payload.personnel.map((p) => `${p.id} ${p.user?.email ?? p.email ?? ""} failing_devices=${p.devicesFailingComplianceCount ?? 0}`)].join("\n");
+    case "personnel.get":
+      return `${payload.personnel.id} ${payload.personnel.user?.email ?? payload.personnel.email ?? ""}`;
+    case "evidence.list":
+      return [`Evidence: workspace=${payload.workspaceId} total=${payload.total} showing=${payload.showing}`, ...payload.evidence.map((e) => `${e.id} ${e.updatedAt ?? "unknown"} ${e.name ?? ""}`)].join("\n");
     case "evidence.expiring":
       return [`Stale Evidence: days=${payload.days} matching=${payload.matching} showing=${payload.showing}`, ...payload.evidence.map((e) => `${e.id} ${e.updatedAt ?? "unknown"} ${e.name ?? ""}`)].join("\n");
     default:

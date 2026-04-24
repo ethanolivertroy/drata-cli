@@ -13,8 +13,13 @@ import {
   printWorkflowPayload,
   runConnectionsList,
   runControlsFailing,
+  runControlsGet,
   runEvidenceExpiring,
+  runEvidenceList,
   runMonitorsFailing,
+  runMonitorsForControl,
+  runMonitorsGet,
+  runPersonnelGet,
   runPersonnelIssues,
   runSummary,
   runWorkflowOperation,
@@ -51,10 +56,15 @@ Usage:
   drata auth <login|status|check|logout>
   drata summary [--json] [--compact]
   drata controls failing [--json] [--compact]
+  drata controls get <code> [--json] [--compact]
   drata monitors failing [--json] [--compact]
+  drata monitors for-control <code> [--json] [--compact]
+  drata monitors get <id> [--json] [--compact]
   drata connections list [--status STATUS] [--json] [--compact]
   drata personnel issues [--json] [--compact]
-  drata evidence expiring [--days N] [--json] [--compact]
+  drata personnel get <id>|--email EMAIL [--json] [--compact]
+  drata evidence list [--workspace-id ID] [--json] [--compact]
+  drata evidence expiring [--days N] [--workspace-id ID] [--json] [--compact]
   drata completion <bash|zsh|fish>
   drata agent-schema [v1|v2] [--tag TAG] [--search TEXT]
   drata <operation> [flags]
@@ -95,7 +105,9 @@ Examples:
   drata auth check --json
   drata summary --json --compact
   drata controls failing --json --compact
+  drata controls get DCF-71 --json --compact
   drata monitors failing --json --compact
+  drata monitors for-control DCF-71 --json --compact
   drata connections list --status DISCONNECTED --json --compact
   drata completion zsh
   drata agent-schema v2 --search controls
@@ -519,13 +531,24 @@ async function handleControlsWorkflow(args) {
     return;
   }
 
-  const flags = await parseWorkflowRequestFlags(rest);
   if (subcommand === "failing") {
+    const flags = await parseWorkflowRequestFlags(rest);
     printWorkflowPayload(await runControlsFailing(flags), flags);
     return;
   }
 
-  fail("unknown_controls_command", `Unknown controls command "${subcommand}". Expected failing.`, {
+  if (subcommand === "get") {
+    const [code, ...flagArgs] = rest;
+    if (!code || code === "--help" || code === "help") {
+      printUsage();
+      return;
+    }
+    const flags = await parseWorkflowRequestFlags(flagArgs);
+    printWorkflowPayload(await runControlsGet(flags, { code }), flags);
+    return;
+  }
+
+  fail("unknown_controls_command", `Unknown controls command "${subcommand}". Expected failing or get.`, {
     command: subcommand,
   });
 }
@@ -537,13 +560,35 @@ async function handleMonitorsWorkflow(args) {
     return;
   }
 
-  const flags = await parseWorkflowRequestFlags(rest);
   if (subcommand === "failing") {
+    const flags = await parseWorkflowRequestFlags(rest);
     printWorkflowPayload(await runMonitorsFailing(flags), flags);
     return;
   }
 
-  fail("unknown_monitors_command", `Unknown monitors command "${subcommand}". Expected failing.`, {
+  if (subcommand === "for-control") {
+    const [code, ...flagArgs] = rest;
+    if (!code || code === "--help" || code === "help") {
+      printUsage();
+      return;
+    }
+    const flags = await parseWorkflowRequestFlags(flagArgs);
+    printWorkflowPayload(await runMonitorsForControl(flags, { code }), flags);
+    return;
+  }
+
+  if (subcommand === "get") {
+    const [id, ...flagArgs] = rest;
+    if (!id || id === "--help" || id === "help") {
+      printUsage();
+      return;
+    }
+    const flags = await parseWorkflowRequestFlags(flagArgs);
+    printWorkflowPayload(await runMonitorsGet(flags, { id }), flags);
+    return;
+  }
+
+  fail("unknown_monitors_command", `Unknown monitors command "${subcommand}". Expected failing, for-control, or get.`, {
     command: subcommand,
   });
 }
@@ -574,13 +619,22 @@ async function handlePersonnelWorkflow(args) {
     return;
   }
 
-  const flags = await parseWorkflowRequestFlags(rest);
   if (subcommand === "issues") {
+    const flags = await parseWorkflowRequestFlags(rest);
     printWorkflowPayload(await runPersonnelIssues(flags), flags);
     return;
   }
 
-  fail("unknown_personnel_command", `Unknown personnel command "${subcommand}". Expected issues.`, {
+  if (subcommand === "get") {
+    const positional = rest[0]?.startsWith("--") ? null : rest[0];
+    const flagArgs = positional ? rest.slice(1) : rest;
+    const flags = await parseWorkflowRequestFlags(flagArgs);
+    const email = takeWorkflowNamedFlag(flags, "email");
+    printWorkflowPayload(await runPersonnelGet(flags, { id: positional, email }), flags);
+    return;
+  }
+
+  fail("unknown_personnel_command", `Unknown personnel command "${subcommand}". Expected issues or get.`, {
     command: subcommand,
   });
 }
@@ -599,12 +653,17 @@ async function handleEvidenceWorkflow(args) {
     fail("invalid_days", `--days must be a non-negative integer`, { days });
   }
 
+  if (subcommand === "list") {
+    printWorkflowPayload(await runEvidenceList(flags, { workspaceId }), flags);
+    return;
+  }
+
   if (subcommand === "expiring") {
     printWorkflowPayload(await runEvidenceExpiring(flags, { days, workspaceId }), flags);
     return;
   }
 
-  fail("unknown_evidence_command", `Unknown evidence command "${subcommand}". Expected expiring.`, {
+  fail("unknown_evidence_command", `Unknown evidence command "${subcommand}". Expected list or expiring.`, {
     command: subcommand,
   });
 }
