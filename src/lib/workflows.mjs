@@ -245,7 +245,7 @@ function compactPersonnel(person) {
     id: person.id ?? null,
     email: person.user?.email ?? person.email ?? null,
     status: person.employmentStatus ?? null,
-    failing_devices: person.devicesFailingComplianceCount ?? 0,
+    failingDevices: person.devicesFailingComplianceCount ?? 0,
   };
 }
 
@@ -487,10 +487,14 @@ export async function runMonitorsFailing(flags) {
   return buildMonitorsFailingPayload(data, flags);
 }
 
+function controlIdentifierMatches(control, target) {
+  return [control.code, control.id].filter((value) => value !== undefined && value !== null).some((value) => String(value) === target);
+}
+
 export async function runMonitorsForControl(flags, options = {}) {
   const code = String(options.code ?? "");
   const { data } = await listV1("list-monitors", flags);
-  const monitors = dataItems(data).filter((monitor) => (monitor.controls ?? []).some((control) => control.code === code));
+  const monitors = dataItems(data).filter((monitor) => (monitor.controls ?? []).some((control) => controlIdentifierMatches(control, code)));
   const limitedMonitors = applyLimit(monitors, flags);
   const payload = {
     kind: "monitors.for-control",
@@ -506,8 +510,17 @@ export async function runMonitorsForControl(flags, options = {}) {
 
 export async function runMonitorsGet(flags, options = {}) {
   const id = String(options.id ?? "");
-  const { data } = await listV1("list-monitors", flags);
-  const monitor = dataItems(data).find((item) => String(item.id) === id);
+  let monitor = null;
+
+  if (options.workspaceId) {
+    const detailFlags = withPath(flags, { workspaceId: options.workspaceId, testId: id });
+    const { data } = await runWorkflowOperation("v1", "get-control-test-instance", detailFlags);
+    monitor = data;
+  } else {
+    const { data } = await listV1("list-monitors", flags);
+    monitor = dataItems(data).find((item) => String(item.id) === id);
+  }
+
   if (!monitor) {
     fail("monitor_not_found", `Monitor ${id} was not found.`, { id });
   }
@@ -528,6 +541,10 @@ export async function runPersonnelIssues(flags) {
 }
 
 export async function runPersonnelGet(flags, options = {}) {
+  if (options.email && options.id) {
+    fail("conflicting_personnel_lookup", "Use either a personnel id or --email, not both.");
+  }
+
   if (options.email) {
     const detailFlags = withPath(flags, { email: options.email });
     const { data } = await runWorkflowOperation("v1", "get-personnel-details-by-email", detailFlags);

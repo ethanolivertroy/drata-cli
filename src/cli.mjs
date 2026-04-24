@@ -59,7 +59,7 @@ Usage:
   drata controls get <code> [--json] [--compact]
   drata monitors failing [--json] [--compact]
   drata monitors for-control <code> [--json] [--compact]
-  drata monitors get <id> [--json] [--compact]
+  drata monitors get <id> [--workspace-id ID] [--json] [--compact]
   drata connections list [--status STATUS] [--json] [--compact]
   drata personnel issues [--json] [--compact]
   drata personnel get <id>|--email EMAIL [--json] [--compact]
@@ -584,7 +584,8 @@ async function handleMonitorsWorkflow(args) {
       return;
     }
     const flags = await parseWorkflowRequestFlags(flagArgs);
-    printWorkflowPayload(await runMonitorsGet(flags, { id }), flags);
+    const workspaceId = takeWorkflowNamedFlag(flags, "workspace-id");
+    printWorkflowPayload(await runMonitorsGet(flags, { id, workspaceId }), flags);
     return;
   }
 

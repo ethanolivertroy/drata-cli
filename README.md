@@ -223,7 +223,7 @@ drata controls failing --json --compact
 drata controls get DCF-71 --json --compact
 drata monitors failing --json --compact
 drata monitors for-control DCF-71 --json --compact
-drata monitors get 31 --json --compact
+drata monitors get 31 --workspace-id 12 --json --compact
 drata connections list --status DISCONNECTED --json --compact
 drata personnel issues --json --compact
 drata personnel get --email alice@example.com --json --compact

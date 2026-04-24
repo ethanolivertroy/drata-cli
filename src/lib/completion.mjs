@@ -44,6 +44,7 @@ const WORKFLOW_FLAGS = [
   "--retry",
   "--timeout-ms",
   "--max-pages",
+  "--workspace-id",
   "--help",
 ];
 const CONNECTION_STATUS_VALUES = ["CONNECTED", "DISCONNECTED", "FAILED", "NEVER_CONNECTED"];
@@ -323,7 +324,7 @@ async function completeWords(index, words) {
     if (beforeWords.length <= 1 && !current.startsWith("--")) {
       return filterByPrefix(["list", "expiring"], current);
     }
-    return filterByPrefix([...WORKFLOW_FLAGS, "--days", "--workspace-id"], current);
+    return filterByPrefix([...WORKFLOW_FLAGS, "--days"], current);
   }
 
   if (first === "ops") {
