@@ -850,11 +850,13 @@ export async function invokeOperation({ operation, parsedFlags }) {
       }
 
       if (pagesFetched >= parsedFlags.maxPages) {
-        fail("pagination_limit_exceeded", `Stopped pagination after ${pagesFetched} page(s). Increase --max-pages to continue.`, {
+        const reason = total === null ? "The response did not include a total count, so pagination could not prove completion." : "Increase --max-pages to continue.";
+        fail("pagination_limit_exceeded", `Stopped pagination after ${pagesFetched} page(s). ${reason}`, {
           operation: operation.displayAlias,
           maxPages: parsedFlags.maxPages,
           pagesFetched,
           nextPage: page + 1,
+          totalKnown: total !== null,
         });
       }
 
