@@ -866,14 +866,16 @@ test("curated connections list filters status before calling the API", async () 
     const url = new URL(request.url, "http://127.0.0.1");
     assert.equal(url.pathname, "/connections");
     assert.equal(url.searchParams.has("status"), false);
+    assert.equal(url.searchParams.get("limit"), "100");
     response.writeHead(200, { "content-type": "application/json" });
     response.end(
       JSON.stringify({
         data: [
           { id: 1, clientType: "connected", connected: true, connectedAt: "2026-01-01T00:00:00Z" },
-          { id: 2, clientType: "disconnected", connected: false, connectedAt: "2026-01-01T00:00:00Z" },
+          { id: 2, clientType: "disconnected-a", connected: false, connectedAt: "2026-01-01T00:00:00Z" },
+          { id: 3, clientType: "disconnected-b", connected: false, connectedAt: "2026-01-01T00:00:00Z" },
         ],
-        total: 2,
+        total: 3,
       }),
     );
   });
@@ -889,6 +891,8 @@ test("curated connections list filters status before calling the API", async () 
         "list",
         "--status",
         "DISCONNECTED",
+        "--limit",
+        "1",
         "--api-key",
         "secret",
         "--base-url",
@@ -900,7 +904,8 @@ test("curated connections list filters status before calling the API", async () 
     );
     const payload = JSON.parse(stdout);
 
-    assert.equal(payload.matching, 1);
+    assert.equal(payload.matching, 2);
+    assert.equal(payload.showing, 1);
     assert.equal(payload.connections[0].status, "DISCONNECTED");
   } finally {
     await new Promise((resolve) => server.close(resolve));

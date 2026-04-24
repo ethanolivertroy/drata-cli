@@ -210,7 +210,7 @@ async function handleAuth(args) {
     }
 
     const name = result.data?.name ?? result.data?.companyName ?? result.data?.data?.name ?? "unknown";
-    console.log(`✓ Authenticated`);
+    console.log(`OK Authenticated`);
     console.log(`Company: ${name}`);
     console.log(`Region: ${payload.region}`);
     console.log(`Key from: ${payload.source}`);

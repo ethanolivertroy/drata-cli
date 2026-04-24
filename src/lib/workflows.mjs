@@ -31,8 +31,9 @@ function withListDefaults(flags) {
   const next = cloneFlags(flags);
   next.readOnly = true;
   next.allPages = true;
+  next.named.delete("limit");
   setNamedDefault(next, "page", 1);
-  setNamedDefault(next, "limit", 100);
+  pushNamed(next, "limit", 100);
   return next;
 }
 
