@@ -12,6 +12,10 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -37,6 +41,17 @@ jobs:
 
       - name: Check package contents
         run: npm pack --dry-run
+
+      - name: Verify tag matches package version
+        if: ${{ inputs.tag != '' }}
+        run: |
+          set -euo pipefail
+          package_version=$(node -p "require('./package.json').version")
+          expected_tag="v${package_version}"
+          if [ "${expected_tag}" != "${{ inputs.tag }}" ]; then
+            echo "Input tag ${{ inputs.tag }} does not match package.json version ${package_version} (${expected_tag})"
+            exit 1
+          fi
 
       - name: Publish to npm
         run: npm publish --provenance --access public
