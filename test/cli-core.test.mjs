@@ -119,6 +119,57 @@ test("prepares GET requests with typed path and query params", async () => {
   assert.equal(prepared.method, "GET");
 });
 
+test("v1 controls workflow lookup parameters remain available in the spec", async () => {
+  const v1 = await getRegistry("v1");
+  const operation = resolveOperation(v1, "controls-get-controls");
+  const queryParameters = new Set(operation.parameters.filter((parameter) => parameter.in === "query").map((parameter) => parameter.name));
+
+  assert.equal(queryParameters.has("q"), true);
+  assert.equal(queryParameters.has("page"), true);
+  assert.equal(queryParameters.has("limit"), true);
+});
+
+test("control status precedence favors owner/configuration issues before passing", async () => {
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    assert.equal(url.pathname, "/controls");
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        data: [
+          { id: 1, code: "DCF-1", name: "No owner", isReady: true, hasOwner: false, isMonitored: true, hasEvidence: true },
+        ],
+        total: 1,
+      }),
+    );
+  });
+
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    const { stdout } = await execFile(
+      process.execPath,
+      [
+        "./src/cli.mjs",
+        "controls",
+        "failing",
+        "--api-key",
+        "secret",
+        "--base-url",
+        `http://127.0.0.1:${port}`,
+        "--json",
+        "--compact",
+      ],
+      { cwd: process.cwd() },
+    );
+    const payload = JSON.parse(stdout);
+
+    assert.equal(payload.controls[0].status, "NO_OWNER");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("preserves --limit as an operation query parameter", async () => {
   const v1 = await getRegistry("v1");
   const operation = resolveOperation(v1, "controls-get-controls");
@@ -799,8 +850,9 @@ test("curated summary emits compact JSON", async () => {
       data: [
         { id: 1, code: "DCF-1", name: "Passing", isReady: true, hasOwner: true, isMonitored: true, hasEvidence: true },
         { id: 2, code: "DCF-2", name: "Missing evidence", isReady: true, hasOwner: true, isMonitored: true, hasEvidence: false },
+        { id: 3, code: "DCF-3", name: "Ready", isReady: true, hasOwner: true, isMonitored: false, hasEvidence: true },
       ],
-      total: 2,
+      total: 3,
     },
     "/monitors": {
       data: [
@@ -851,7 +903,7 @@ test("curated summary emits compact JSON", async () => {
     const payload = JSON.parse(stdout);
 
     assert.equal(payload.status, "NEEDS_ATTENTION");
-    assert.equal(payload.controls.total, 2);
+    assert.equal(payload.controls.total, 3);
     assert.equal(payload.controls.needs_attention, 1);
     assert.equal(payload.monitors.failed, 1);
     assert.equal(payload.personnel.with_issues, 1);
@@ -907,6 +959,39 @@ test("curated connections list filters status before calling the API", async () 
     assert.equal(payload.matching, 2);
     assert.equal(payload.showing, 1);
     assert.equal(payload.connections[0].status, "DISCONNECTED");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("workflow auth can read an API key from stdin once", async () => {
+  const server = createServer((request, response) => {
+    assert.equal(request.headers.authorization, "Bearer stdin-secret");
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ data: [], total: 0 }));
+  });
+
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    const { stdout } = await execFileWithInput(
+      process.execPath,
+      [
+        "./src/cli.mjs",
+        "controls",
+        "failing",
+        "--api-key-stdin",
+        "--base-url",
+        `http://127.0.0.1:${port}`,
+        "--json",
+        "--compact",
+      ],
+      "stdin-secret\n",
+      { cwd: process.cwd() },
+    );
+    const payload = JSON.parse(stdout);
+
+    assert.equal(payload.matching, 0);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
