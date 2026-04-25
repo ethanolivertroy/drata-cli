@@ -44,6 +44,7 @@ const WORKFLOW_FLAGS = [
   "--retry",
   "--timeout-ms",
   "--max-pages",
+  "--workspace-id",
   "--help",
 ];
 const CONNECTION_STATUS_VALUES = ["CONNECTED", "DISCONNECTED", "FAILED", "NEVER_CONNECTED"];
@@ -97,6 +98,7 @@ const FLAGS_REQUIRING_VALUES = new Set([
   "--status",
   "--days",
   "--workspace-id",
+  "--email",
   "--tag",
   "--search",
 ]);
@@ -292,14 +294,14 @@ async function completeWords(index, words) {
 
   if (first === "controls") {
     if (beforeWords.length <= 1 && !current.startsWith("--")) {
-      return filterByPrefix(["failing"], current);
+      return filterByPrefix(["failing", "get"], current);
     }
     return filterByPrefix(WORKFLOW_FLAGS, current);
   }
 
   if (first === "monitors") {
     if (beforeWords.length <= 1 && !current.startsWith("--")) {
-      return filterByPrefix(["failing"], current);
+      return filterByPrefix(["failing", "for-control", "get"], current);
     }
     return filterByPrefix(WORKFLOW_FLAGS, current);
   }
@@ -313,16 +315,16 @@ async function completeWords(index, words) {
 
   if (first === "personnel") {
     if (beforeWords.length <= 1 && !current.startsWith("--")) {
-      return filterByPrefix(["issues"], current);
+      return filterByPrefix(["issues", "get"], current);
     }
-    return filterByPrefix(WORKFLOW_FLAGS, current);
+    return filterByPrefix([...WORKFLOW_FLAGS, "--email"], current);
   }
 
   if (first === "evidence") {
     if (beforeWords.length <= 1 && !current.startsWith("--")) {
-      return filterByPrefix(["expiring"], current);
+      return filterByPrefix(["list", "expiring"], current);
     }
-    return filterByPrefix([...WORKFLOW_FLAGS, "--days", "--workspace-id"], current);
+    return filterByPrefix([...WORKFLOW_FLAGS, "--days"], current);
   }
 
   if (first === "ops") {

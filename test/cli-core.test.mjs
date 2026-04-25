@@ -1018,6 +1018,156 @@ test("curated connections list filters status before calling the API", async () 
   }
 });
 
+test("curated investigation commands return compact JSON", async () => {
+  const responses = {
+    "/controls": {
+      data: [{ id: 2, code: "DCF-2", name: "Missing evidence", isReady: true, hasOwner: true, isMonitored: true, hasEvidence: false }],
+      total: 1,
+    },
+    "/monitors": {
+      data: [
+        { id: 11, name: "Bad", checkResultStatus: "FAILED", controls: [{ code: "DCF-2" }] },
+        { id: 12, name: "Other", checkResultStatus: "PASSED", controls: [{ code: "DCF-3" }] },
+      ],
+      total: 2,
+    },
+    "/workspaces/12/monitors/11/details": {
+      id: 11,
+      name: "Bad detail",
+      checkResultStatus: "FAILED",
+      controls: [{ id: 2 }],
+    },
+    "/personnel/alice%40example.com/email": {
+      id: 20,
+      user: { email: "alice@example.com" },
+      employmentStatus: "CURRENT_EMPLOYEE",
+      devicesFailingComplianceCount: 0,
+    },
+    "/workspaces/12/evidence-library": {
+      data: [{ id: 40, name: "SOC 2", updatedAt: "2020-01-01T00:00:00Z", versions: [{ id: 1 }] }],
+      total: 1,
+    },
+  };
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    const payload = responses[url.pathname];
+    assert.ok(payload, `unexpected path ${url.pathname}`);
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(payload));
+  });
+
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    const baseArgs = ["--api-key", "secret", "--base-url", `http://127.0.0.1:${port}`, "--json", "--compact"];
+
+    const control = JSON.parse(
+      (
+        await execFile(process.execPath, ["./src/cli.mjs", "controls", "get", "DCF-2", ...baseArgs], {
+          cwd: process.cwd(),
+        })
+      ).stdout,
+    );
+    assert.equal(control.control.status, "NEEDS_EVIDENCE");
+
+    const monitors = JSON.parse(
+      (
+        await execFile(process.execPath, ["./src/cli.mjs", "monitors", "for-control", "DCF-2", ...baseArgs], {
+          cwd: process.cwd(),
+        })
+      ).stdout,
+    );
+    assert.equal(monitors.matching, 1);
+    assert.equal(monitors.monitors[0].id, 11);
+
+    const monitor = JSON.parse(
+      (
+        await execFile(process.execPath, ["./src/cli.mjs", "monitors", "get", "11", "--workspace-id", "12", ...baseArgs], {
+          cwd: process.cwd(),
+        })
+      ).stdout,
+    );
+    assert.equal(monitor.monitor.name, "Bad detail");
+
+    const personnel = JSON.parse(
+      (
+        await execFile(process.execPath, ["./src/cli.mjs", "personnel", "get", "--email", "alice@example.com", ...baseArgs], {
+          cwd: process.cwd(),
+        })
+      ).stdout,
+    );
+    assert.equal(personnel.personnel.email, "alice@example.com");
+    assert.equal(personnel.personnel.failing_devices, 0);
+
+    const evidence = JSON.parse(
+      (
+        await execFile(process.execPath, ["./src/cli.mjs", "evidence", "list", "--workspace-id", "12", ...baseArgs], {
+          cwd: process.cwd(),
+        })
+      ).stdout,
+    );
+    assert.equal(evidence.matching, 1);
+    assert.equal(evidence.evidence[0].name, "SOC 2");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("curated investigation commands report not found and conflicting lookups", async () => {
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    if (url.pathname === "/controls") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ data: [], total: 0 }));
+      return;
+    }
+    if (url.pathname === "/monitors") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ data: [], total: 0 }));
+      return;
+    }
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end(JSON.stringify({ message: "not found" }));
+  });
+
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    const baseArgs = ["--api-key", "secret", "--base-url", `http://127.0.0.1:${port}`, "--json"];
+
+    await assert.rejects(
+      execFile(process.execPath, ["./src/cli.mjs", "controls", "get", "DCF-NOPE", ...baseArgs], { cwd: process.cwd() }),
+      (error) => {
+        const payload = JSON.parse(error.stdout);
+        assert.equal(payload.error.code, "control_not_found");
+        return true;
+      },
+    );
+
+    await assert.rejects(
+      execFile(process.execPath, ["./src/cli.mjs", "monitors", "get", "999", ...baseArgs], { cwd: process.cwd() }),
+      (error) => {
+        const payload = JSON.parse(error.stdout);
+        assert.equal(payload.error.code, "monitor_not_found");
+        return true;
+      },
+    );
+
+    await assert.rejects(
+      execFile(process.execPath, ["./src/cli.mjs", "personnel", "get", "123", "--email", "alice@example.com", ...baseArgs], {
+        cwd: process.cwd(),
+      }),
+      (error) => {
+        const payload = JSON.parse(error.stdout);
+        assert.equal(payload.error.code, "conflicting_personnel_lookup");
+        return true;
+      },
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("evidence expiring includes the scoped workspace id", async () => {
   const server = createServer((request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
