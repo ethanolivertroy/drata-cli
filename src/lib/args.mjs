@@ -53,6 +53,8 @@ export function parseRequestFlags(tokens) {
     dryRun: false,
     readOnly: false,
     json: false,
+    compact: false,
+    limit: 0,
     retry: 0,
     retryProvided: false,
     timeoutMs: 30000,
@@ -196,6 +198,19 @@ export function parseRequestFlags(tokens) {
       case "json":
         parsed.json = true;
         break;
+      case "compact":
+        parsed.compact = true;
+        break;
+      case "limit": {
+        const result = readOptionValue(tokens, index, inlineValue, flagName);
+        parsed.limit = Number(result.value);
+        if (!Number.isInteger(parsed.limit) || parsed.limit < 0) {
+          fail("invalid_limit", `--limit must be a non-negative integer`, { value: result.value });
+        }
+        pushValue(parsed.named, "limit", result.value);
+        index = result.nextIndex;
+        break;
+      }
       case "help":
         parsed.help = true;
         break;

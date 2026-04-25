@@ -17,6 +17,12 @@ const TOP_LEVEL_COMMANDS = [
   "describe",
   "call",
   "auth",
+  "summary",
+  "controls",
+  "monitors",
+  "connections",
+  "personnel",
+  "evidence",
   "completion",
   "agent-schema",
   "help",
@@ -24,8 +30,24 @@ const TOP_LEVEL_COMMANDS = [
 ];
 const OPS_FLAGS = ["--tag", "--search", "--json", "--help"];
 const DESCRIBE_FLAGS = ["--json", "--help"];
-const AUTH_COMMANDS = ["login", "status", "logout"];
-const AUTH_FLAGS = ["--api-key", "--api-key-file", "--api-key-stdin", "--json", "--help"];
+const AUTH_COMMANDS = ["login", "status", "check", "logout"];
+const AUTH_FLAGS = ["--api-key", "--api-key-file", "--api-key-stdin", "--base-url", "--region", "--json", "--help"];
+const WORKFLOW_FLAGS = [
+  "--api-key",
+  "--api-key-file",
+  "--api-key-stdin",
+  "--region",
+  "--base-url",
+  "--json",
+  "--compact",
+  "--limit",
+  "--retry",
+  "--timeout-ms",
+  "--max-pages",
+  "--workspace-id",
+  "--help",
+];
+const CONNECTION_STATUS_VALUES = ["CONNECTED", "DISCONNECTED", "FAILED", "NEVER_CONNECTED"];
 const AGENT_SCHEMA_FLAGS = ["--tag", "--search", "--help"];
 const COMPLETION_SHELLS = ["bash", "zsh", "fish"];
 const REQUEST_FLAGS = [
@@ -49,6 +71,8 @@ const REQUEST_FLAGS = [
   "--dry-run",
   "--read-only",
   "--json",
+  "--compact",
+  "--limit",
   "--retry",
   "--timeout-ms",
   "--help",
@@ -70,6 +94,11 @@ const FLAGS_REQUIRING_VALUES = new Set([
   "--output",
   "--retry",
   "--timeout-ms",
+  "--limit",
+  "--status",
+  "--days",
+  "--workspace-id",
+  "--email",
   "--tag",
   "--search",
 ]);
@@ -143,6 +172,18 @@ async function completeFlagValue(previousFlag, beforeWords) {
 
   if (previousFlag === "--retry") {
     return ["0", "1", "2", "3"];
+  }
+
+  if (previousFlag === "--limit") {
+    return ["10", "25", "50", "100"];
+  }
+
+  if (previousFlag === "--status") {
+    return CONNECTION_STATUS_VALUES;
+  }
+
+  if (previousFlag === "--days") {
+    return ["30", "60", "90", "180"];
   }
 
   if (previousFlag === "--tag") {
@@ -245,6 +286,45 @@ async function completeWords(index, words) {
       return filterByPrefix(AUTH_COMMANDS, current);
     }
     return filterByPrefix(AUTH_FLAGS, current);
+  }
+
+  if (first === "summary") {
+    return filterByPrefix(WORKFLOW_FLAGS, current);
+  }
+
+  if (first === "controls") {
+    if (beforeWords.length <= 1 && !current.startsWith("--")) {
+      return filterByPrefix(["failing", "get"], current);
+    }
+    return filterByPrefix(WORKFLOW_FLAGS, current);
+  }
+
+  if (first === "monitors") {
+    if (beforeWords.length <= 1 && !current.startsWith("--")) {
+      return filterByPrefix(["failing", "for-control", "get"], current);
+    }
+    return filterByPrefix(WORKFLOW_FLAGS, current);
+  }
+
+  if (first === "connections") {
+    if (beforeWords.length <= 1 && !current.startsWith("--")) {
+      return filterByPrefix(["list"], current);
+    }
+    return filterByPrefix([...WORKFLOW_FLAGS, "--status"], current);
+  }
+
+  if (first === "personnel") {
+    if (beforeWords.length <= 1 && !current.startsWith("--")) {
+      return filterByPrefix(["issues", "get"], current);
+    }
+    return filterByPrefix([...WORKFLOW_FLAGS, "--email"], current);
+  }
+
+  if (first === "evidence") {
+    if (beforeWords.length <= 1 && !current.startsWith("--")) {
+      return filterByPrefix(["list", "expiring"], current);
+    }
+    return filterByPrefix([...WORKFLOW_FLAGS, "--days"], current);
   }
 
   if (first === "ops") {
