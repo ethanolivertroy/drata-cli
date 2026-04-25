@@ -31,6 +31,7 @@ function withListDefaults(flags) {
   const next = cloneFlags(flags);
   next.readOnly = true;
   next.allPages = true;
+  // Workflow --limit is a display cap; keep API page size stable for predictable collection work.
   next.named.delete("limit");
   setNamedDefault(next, "page", 1);
   pushNamed(next, "limit", 100);
@@ -114,6 +115,7 @@ function toUpperMaybe(value) {
 }
 
 function controlStatus(control) {
+  // Configuration and ownership issues outrank passing signals so missing accountability remains visible.
   if (control.archivedAt || control.isArchived) {
     return "ARCHIVED";
   }
@@ -245,7 +247,7 @@ function compactPersonnel(person) {
     id: person.id ?? null,
     email: person.user?.email ?? person.email ?? null,
     status: person.employmentStatus ?? null,
-    failingDevices: person.devicesFailingComplianceCount ?? 0,
+    failing_devices: person.devicesFailingComplianceCount ?? 0,
   };
 }
 
@@ -282,13 +284,18 @@ function applyLimit(items, flags) {
 export function buildControlsFailingPayload(controlsPayload, flags) {
   const rawControls = dataItems(controlsPayload).map(enrichControl);
   const controls = rawControls.filter((control) => ["NOT_READY", "NO_OWNER", "NEEDS_EVIDENCE"].includes(control.status));
+  const failingSummary = summarizeControls(controls);
   const limitedControls = applyLimit(controls, flags);
   const payload = {
     kind: "controls.failing",
     total: payloadTotal(controlsPayload, rawControls),
     matching: controls.length,
     showing: limitedControls.length,
-    summary: summarizeControls(controls),
+    summary: {
+      not_ready: failingSummary.not_ready,
+      no_owner: failingSummary.no_owner,
+      needs_evidence: failingSummary.needs_evidence,
+    },
     controls: limitedControls,
   };
 
@@ -348,7 +355,7 @@ function parseTimestamp(value) {
   return Number.isFinite(ms) ? ms : null;
 }
 
-export function buildEvidenceExpiringPayload(evidencePayload, flags, days) {
+export function buildEvidenceExpiringPayload(evidencePayload, flags, days, workspaceId = null) {
   const threshold = Date.now() - days * 24 * 60 * 60 * 1000;
   const evidence = dataItems(evidencePayload).filter((item) => {
     const updatedMs = parseTimestamp(item.updatedAt);
@@ -358,6 +365,7 @@ export function buildEvidenceExpiringPayload(evidencePayload, flags, days) {
   const payload = {
     kind: "evidence.expiring",
     days,
+    workspaceId,
     total: payloadTotal(evidencePayload, dataItems(evidencePayload)),
     matching: evidence.length,
     showing: limitedEvidence.length,
@@ -495,6 +503,7 @@ function controlIdentifierMatches(control, target) {
 export async function runMonitorsForControl(flags, options = {}) {
   const code = String(options.code ?? "");
   const { data } = await listV1("list-monitors", flags);
+  // This uses controls embedded on the list response; use `monitors get --workspace-id` for detail-only fields.
   const monitors = dataItems(data).filter((monitor) => (monitor.controls ?? []).some((control) => controlIdentifierMatches(control, code)));
   const limitedMonitors = applyLimit(monitors, flags);
   const payload = {
@@ -579,10 +588,12 @@ export async function runEvidenceList(flags, options = {}) {
 }
 
 export async function runEvidenceExpiring(flags, options = {}) {
+  // Defaulting to the first workspace keeps the command ergonomic for single-workspace tenants.
+  // Multi-workspace tenants should pass --workspace-id explicitly for deterministic scope.
   const workspaceId = options.workspaceId || (await getFirstWorkspaceId(flags));
   const listFlags = withPath(withListDefaults(flags), { workspaceId });
   const { data } = await runWorkflowOperation("v1", "list-evidence", listFlags);
-  return buildEvidenceExpiringPayload(data, flags, options.days);
+  return buildEvidenceExpiringPayload(data, flags, options.days, workspaceId);
 }
 
 async function getFirstWorkspaceId(flags) {
@@ -633,7 +644,7 @@ function formatWorkflowText(payload) {
     case "evidence.list":
       return [`Evidence: workspace=${payload.workspaceId} total=${payload.total} showing=${payload.showing}`, ...payload.evidence.map((e) => `${e.id} ${e.updatedAt ?? "unknown"} ${e.name ?? ""}`)].join("\n");
     case "evidence.expiring":
-      return [`Stale Evidence: days=${payload.days} matching=${payload.matching} showing=${payload.showing}`, ...payload.evidence.map((e) => `${e.id} ${e.updatedAt ?? "unknown"} ${e.name ?? ""}`)].join("\n");
+      return [`Stale Evidence: workspace=${payload.workspaceId ?? "auto"} days=${payload.days} matching=${payload.matching} showing=${payload.showing}`, ...payload.evidence.map((e) => `${e.id} ${e.updatedAt ?? "unknown"} ${e.name ?? ""}`)].join("\n");
     default:
       return JSON.stringify(payload, null, 2);
   }
