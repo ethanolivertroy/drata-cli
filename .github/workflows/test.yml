@@ -9,7 +9,13 @@ permissions:
 
 jobs:
   test:
+    name: Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22, 24]
 
     steps:
       - name: Check out repository
@@ -18,10 +24,38 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check
+        run: |
+          find src scripts test -name '*.mjs' -print0 | xargs -0 -n1 node --check
 
       - name: Run tests
         run: npm test
 
       - name: Check package contents
         run: npm pack --dry-run
+
+      - name: Smoke test packed CLI
+        run: |
+          set -euo pipefail
+          tarball=$(npm pack --silent)
+          prefix=$(mktemp -d)
+          cleanup() {
+            rm -f "$tarball" smoke-error.json
+            rm -rf "$prefix"
+          }
+          trap cleanup EXIT
+          npm install -g --prefix "$prefix" "$tarball"
+          "$prefix/bin/drata" --version
+          "$prefix/bin/drata" ops v2 --search company --json
+          "$prefix/bin/drata" get-company --dry-run --json
+          if "$prefix/bin/drata" describe v2 nope --json > smoke-error.json 2>/dev/null; then
+            echo "expected unknown operation to fail"
+            exit 1
+          fi
+          node -e "const p=require('./smoke-error.json'); if (p.error.code !== 'unknown_operation') process.exit(1)"
