@@ -477,6 +477,60 @@ test("returns merged raw output for page/limit paginated requests", async () => 
   }
 });
 
+test("page/limit pagination without totals stops at --max-pages with a specific hint", async () => {
+  const operation = {
+    version: "v1",
+    displayAlias: "list-test",
+    operationId: "ListTest",
+    method: "GET",
+    path: "/items",
+    parameters: [
+      { in: "query", name: "page", required: false, schema: { type: "number" } },
+      { in: "query", name: "limit", required: false, schema: { type: "number" } },
+    ],
+    requestBody: null,
+    servers: [],
+  };
+  const parsedFlags = parseRequestFlags([
+    "--api-key",
+    "fake",
+    "--base-url",
+    "https://example.test",
+    "--all-pages",
+    "--max-pages",
+    "2",
+    "--limit",
+    "2",
+  ]);
+  parsedFlags.named.set("limit", ["2"]);
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ data: [{ id: calls * 2 - 1 }, { id: calls * 2 }] }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+      },
+    });
+  };
+
+  try {
+    await assert.rejects(
+      invokeOperation({ operation, parsedFlags }),
+      (error) => {
+        assert.equal(error.cliCode, "pagination_limit_exceeded");
+        assert.match(error.message, /did not include a total count/);
+        return true;
+      },
+    );
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("limits paginated requests with --max-pages", async () => {
   const operation = {
     version: "v2",
@@ -959,6 +1013,45 @@ test("curated connections list filters status before calling the API", async () 
     assert.equal(payload.matching, 2);
     assert.equal(payload.showing, 1);
     assert.equal(payload.connections[0].status, "DISCONNECTED");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("evidence expiring includes the scoped workspace id", async () => {
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    assert.equal(url.pathname, "/workspaces/12/evidence-library");
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ data: [{ id: 1, name: "Old", updatedAt: "2020-01-01T00:00:00Z" }], total: 1 }));
+  });
+
+  try {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address();
+    const { stdout } = await execFile(
+      process.execPath,
+      [
+        "./src/cli.mjs",
+        "evidence",
+        "expiring",
+        "--workspace-id",
+        "12",
+        "--days",
+        "30",
+        "--api-key",
+        "secret",
+        "--base-url",
+        `http://127.0.0.1:${port}`,
+        "--json",
+        "--compact",
+      ],
+      { cwd: process.cwd() },
+    );
+    const payload = JSON.parse(stdout);
+
+    assert.equal(payload.workspaceId, "12");
+    assert.equal(payload.matching, 1);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
