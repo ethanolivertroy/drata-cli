@@ -3,6 +3,8 @@ import { fail } from "./errors.mjs";
 import { invokeOperation } from "./http.mjs";
 import { getRegistry, resolveOperation, serializeOperationSummary } from "./specs.mjs";
 
+const WORKFLOW_API_PAGE_SIZE = 50;
+
 function cloneFlags(flags) {
   return {
     ...flags,
@@ -34,7 +36,7 @@ function withListDefaults(flags) {
   // Workflow --limit is a display cap; keep API page size stable for predictable collection work.
   next.named.delete("limit");
   setNamedDefault(next, "page", 1);
-  pushNamed(next, "limit", 100);
+  pushNamed(next, "limit", WORKFLOW_API_PAGE_SIZE);
   return next;
 }
 

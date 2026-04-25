@@ -932,7 +932,7 @@ test("curated summary emits compact JSON", async () => {
     const payload = responses[url.pathname];
     assert.ok(payload, `unexpected path ${url.pathname}`);
     assert.equal(url.searchParams.get("page"), "1");
-    assert.equal(url.searchParams.get("limit"), "100");
+    assert.equal(url.searchParams.get("limit"), "50");
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify(payload));
   });
@@ -972,7 +972,7 @@ test("curated connections list filters status before calling the API", async () 
     const url = new URL(request.url, "http://127.0.0.1");
     assert.equal(url.pathname, "/connections");
     assert.equal(url.searchParams.has("status"), false);
-    assert.equal(url.searchParams.get("limit"), "100");
+    assert.equal(url.searchParams.get("limit"), "50");
     response.writeHead(200, { "content-type": "application/json" });
     response.end(
       JSON.stringify({
