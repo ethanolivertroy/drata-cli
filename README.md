@@ -38,7 +38,7 @@ The CLI is designed to work well with automation and coding agents:
 
 ## Stability
 
-This is a `0.1.x` release. The CLI is intended to be usable, but the public contract may still change before `1.0.0`, especially generated operation aliases, request flag naming for newly refreshed specs, and the exact JSON envelope shape for machine-readable output.
+This is a `0.2.x` release. The CLI is intended to be usable, but the public contract may still change before `1.0.0`, especially generated operation aliases, request flag naming for newly refreshed specs, and the exact JSON envelope shape for machine-readable output.
 
 ## Agent Integrations
 

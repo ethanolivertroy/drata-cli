@@ -1,6 +1,6 @@
 {
   "name": "drata-cli",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Unofficial command-line client for Drata's public API.",
   "license": "MIT",
   "author": "Ethan Troy <63926014+ethanolivertroy@users.noreply.github.com>",
