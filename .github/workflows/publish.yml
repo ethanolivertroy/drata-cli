@@ -48,12 +48,14 @@ jobs:
 
       - name: Verify tag matches package version
         if: ${{ inputs.tag != '' }}
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           package_version=$(node -p "require('./package.json').version")
           expected_tag="v${package_version}"
-          if [ "${expected_tag}" != "${{ inputs.tag }}" ]; then
-            echo "Input tag ${{ inputs.tag }} does not match package.json version ${package_version} (${expected_tag})"
+          if [ "${expected_tag}" != "${INPUT_TAG}" ]; then
+            echo "Input tag ${INPUT_TAG} does not match package.json version ${package_version} (${expected_tag})"
             exit 1
           fi
 
